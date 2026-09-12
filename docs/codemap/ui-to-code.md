@@ -609,3 +609,27 @@ of Ghost Mode warnings is split along exactly this line.
 
 *(Established 2026-09-10, #ghost-type-warning; corollary added 2026-09-10 in
 the same feature's warning-tuning change.)*
+
+## The Scheduled list is reverse-stacked: index 0 of the loaded list renders at the screen bottom
+
+The in-chat message list (Scheduled list included) is laid out by a
+`GridLayoutManagerFixed` built with `reverseLayout = !reversed`, and `reversed`
+defaults `false` (`ChatActivity.java:7303`, field default `ChatActivity.java:2976`),
+so the effective `reverseLayout` is `true`: the item at `messages` index 0 draws
+at the **bottom** of the screen and higher indices climb upward. On a normal
+(append) load, loaded objects are appended into `messages` in array order after the
+load-time sort (`ChatActivity.java:23353-23361`), so the first element of the sorted
+list is the bottom-most row on screen. A forward load (`load_type == 1`) reaches the
+SAME final order by a different route, not a reversed one: it first reverses the whole
+batch (`Collections.reverse(messArr)`, `ChatActivity.java:22977`) and then PREPENDS each
+object at index 0 (`:23353`) instead of appending. Reverse-then-prepend-each composes
+back to the original sorted order -- `[a,b,c]` -> reverse -> `[c,b,a]` -> prepend c, then
+b, then a -> `[a,b,c]` -- so a forward load lands identically to an append load. The
+index-0-is-bottom orientation holds either way.
+
+This is the orientation fact behind the Ghost Hold held-row ordering: to make a
+block read oldest-at-top / newest-at-bottom, the newest row must sit at the
+**lowest** index, not the highest. Getting this backwards produces a fix that
+looks right in the code and is still reversed on the device.
+
+*(Established 2026-09-11, #ghost-hold.)*

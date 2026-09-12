@@ -873,3 +873,28 @@ upstream base files and the change would buy a diagnostic string at the cost of
 merge surface.
 
 *(Established 2026-09-11, #release.)*
+
+## "The forward-selection order inversion at ChatActivity.java:3918 reverses held rows too"
+
+Disproven. The selected-id sort before forwarding orders ids *ascending*
+(`ChatActivity.java:3918`), which for decrementing negative local ids is
+newest-first — so it looks like it would forward several held rows in reverse
+hold order, the same symptom as the Scheduled-list ordering bug. It cannot,
+because **held rows never enter the selection model at all.** The guard sits at
+the entrance, not on the forward path: `addToSelectedMessages`, the reply/quote
+preview loop, and `canSelect` each refuse a held row, and a held row's only
+action is delete through the single-row cancel menu, which does not go through
+the selection model (the `isHeld` guards sit at the selection entrances —
+`canSelect` at `:1985` (guard `:1992`), the reply/quote preview loop at `:12379`
+(the `continue` before its selection-map write at `:12392`), and
+`addToSelectedMessages` at `:20906` (guard `:20914`) — and `naxExcludeHeldFromSend`
+(`:37238`, its own guard at `:37245`) strips any held row from the send-assembly
+paths as a second line of defence, called from `:4384`, `:16865`, `:37283` and
+`:49115`; `resolveRescheduleItems` (`:37912`) likewise skips held rows at `:37923`).
+With no held row ever selected, `:3918` never sees
+one, so the `#ghost-hold` scheduled-order fix deliberately leaves it untouched.
+
+The next reader will look at `:3918`, see the same apparent inversion, and be
+tempted to "fix" it for held rows. Don't — the path is unreachable for them.
+
+*(Established 2026-09-11, #ghost-hold. Citations re-verified 2026-09-12.)*

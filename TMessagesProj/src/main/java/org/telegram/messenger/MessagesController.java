@@ -12383,9 +12383,34 @@ public class MessagesController extends BaseController implements NotificationCe
             // feeding objects before the sort and the count post below renders and counts
             // them like any other scheduled message.
             com.radolyn.ayugram.ghosthold.GhostHoldController.injectHeldScheduled(currentAccount, dialogId, objects);
+            // NagramX: held rows share one exact date per bucket (plain 0x7FFFFFFD, online
+            // 0x7FFFFFFE, or a same-second timed hold) and carry negative local ids, so the stock
+            // tie-break below -- which only fires when BOTH ids are >= 0 -- leaves a held pair tied
+            // at 0 and orders it only by however the stable sort happened to receive it. That made
+            // the held run's order an accident of append order. Resolve a tie that INVOLVES a held
+            // row through the flush-snapshot rank instead, so the run renders in send order (oldest
+            // at the top, since the list is reverse-stacked and a higher rank maps to a lower index).
+            // The view is built ONCE here, before the sort, and closed over -- never per comparison,
+            // which would make the sort O(n^2 log n) on this thread. rankOf keys on mid and returns
+            // -1 for any row the fork does not own, so a pair with no held row falls through to the
+            // exact stock comparator (id >= 0 guard included) and nothing else moves. A held row
+            // sorts ABOVE a genuine same-date row (higher array index), making explicit the order a
+            // freshly appended-then-stable-sorted load already produced. See docs/codemap/upstream-traps.md.
+            final com.radolyn.ayugram.ghosthold.GhostHoldController.HeldOrderView naxHeldOrder =
+                    com.radolyn.ayugram.ghosthold.GhostHoldController.heldOrderView(currentAccount, dialogId);
             Collections.sort(objects, (o1, o2) -> {
-                if (o1.messageOwner.date == o2.messageOwner.date && o1.getId() >= 0 && o2.getId() >= 0) {
-                    return o2.getId() - o1.getId();
+                if (o1.messageOwner.date == o2.messageOwner.date) {
+                    int r1 = naxHeldOrder.rankOf(o1.getId());
+                    int r2 = naxHeldOrder.rankOf(o2.getId());
+                    if (r1 >= 0 && r2 >= 0) {
+                        return r2 - r1;
+                    }
+                    if (r1 >= 0 || r2 >= 0) {
+                        return r1 >= 0 ? 1 : -1;
+                    }
+                    if (o1.getId() >= 0 && o2.getId() >= 0) {
+                        return o2.getId() - o1.getId();
+                    }
                 }
                 return o2.messageOwner.date - o1.messageOwner.date;
             });

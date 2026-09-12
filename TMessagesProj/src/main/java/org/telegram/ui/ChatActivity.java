@@ -28111,6 +28111,16 @@ public class ChatActivity extends BaseFragment implements
                         }
                     }
                 }
+                // NagramX: the stock placement loop above only tie-breaks with id > 0 checks, so
+                // it cannot order a live-arriving held row against a held sibling (held rows carry
+                // negative local ids) -- it lands the row by the fallthrough, rendering that date's
+                // run newest-first, the same defect the load path fixes. Hand placement to the
+                // fork's ordering oracle, which reproduces the cold-load order. The helper self-gates
+                // on MODE_SCHEDULED and on this row being a held member, and returns placeToPaste
+                // untouched for everything else, so genuine scheduled rows and other timelines are
+                // unaffected. See GhostHoldController.placeLiveHeldRow / HeldOrderView.
+                placeToPaste = com.radolyn.ayugram.ghosthold.GhostHoldController.placeLiveHeldRow(
+                        currentAccount, chatMode, dialog_id, messages, obj, placeToPaste);
                 if (isAd && sponsoredMessagesPostsBetween > 0) {
                     placeToPaste = findAdPlace();
                     if (placeToPaste < 0 || placeToPaste > messages.size()) {
